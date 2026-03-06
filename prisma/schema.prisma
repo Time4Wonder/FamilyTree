@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Person {
+  id              String     @id @default(cuid())
+  firstName       String
+  lastName        String
+  birthDate       DateTime?
+  deathDate       DateTime?
+  avatarUrl       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  motherId        String?
+  mother          Person?    @relation("MotherChildren", fields: [motherId], references: [id])
+  fatherId        String?
+  father          Person?    @relation("FatherChildren", fields: [fatherId], references: [id])
+  
+  motherChildren  Person[]   @relation("MotherChildren")
+  fatherChildren  Person[]   @relation("FatherChildren")
+
+  documents       Document[]
+}
+
+model Document {
+  id              String   @id @default(cuid())
+  title           String
+  filePath        String
+  fileType        String
+  createdAt       DateTime @default(now())
+  
+  personId        String
+  person          Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+}
