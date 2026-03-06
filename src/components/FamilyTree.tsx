@@ -1,170 +1,165 @@
 "use client";
-import React, { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useMemo, useCallback } from 'react';
+import {
+  ReactFlow,
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  Panel,
+  MarkerType
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import dagre from 'dagre';
+import PersonNode from './PersonNode';
 
-interface TreeNode {
-  person: any;
-  partners: {
-    partner: any | null;
-    children: TreeNode[];
-  }[];
-}
+const nodeTypes = {
+  person: PersonNode,
+};
 
-export default function FamilyTree({ persons }: { persons: any[] }) {
-  const router = useRouter();
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-  const treeRoots = useMemo(() => {
-    let roots = persons.filter(p => !p.motherId && !p.fatherId);
-    const visited = new Set<string>();
+// Computes graph layouts with Dagre
+const getLayoutedElements = (nodes: any[], edges: any[]) => {
+  const nodeWidth = 200;
+  const nodeHeight = 80;
 
-    const buildNode = (person: any): TreeNode | null => {
-      if (visited.has(person.id)) return null;
-      visited.add(person.id);
+  dagreGraph.setGraph({ rankdir: 'TB', ranksep: 60, nodesep: 40 });
 
-      const childrenOfPerson = persons.filter(p => p.motherId === person.id || p.fatherId === person.id);
-      const partnersMap = new Map<string | null, any[]>();
-      
-      childrenOfPerson.forEach(child => {
-        let partnerId = null;
-        if (child.motherId === person.id) partnerId = child.fatherId;
-        if (child.fatherId === person.id) partnerId = child.motherId;
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
 
-        const key = partnerId || null;
-        if (!partnersMap.has(key)) partnersMap.set(key, []);
-        partnersMap.get(key)!.push(child);
-      });
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
 
-      const partners = Array.from(partnersMap.entries()).map(([partnerId, children]) => {
-        let partner = null;
-        if (partnerId) {
-          partner = persons.find(p => p.id === partnerId);
-          if (partner) visited.add(partner.id);
-        }
-        
-        return {
-          partner,
-          children: children.map(c => buildNode(c)).filter(Boolean) as TreeNode[]
-        };
-      });
+  dagre.layout(dagreGraph);
 
-      return { person, partners };
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      targetPosition: 'top',
+      sourcePosition: 'bottom',
+      position: {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - nodeHeight / 2,
+      },
     };
+  });
 
-    const forest: TreeNode[] = [];
-    for (const r of roots) {
-      if (!visited.has(r.id)) {
-        const node = buildNode(r);
-        if (node) forest.push(node);
+  return { nodes: layoutedNodes, edges };
+};
+
+export default function FamilyTreeGraph({ persons }: { persons: any[] }) {
+  const [edgeType, setEdgeType] = React.useState('default');
+
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
+    const nodes: any[] = [];
+    const edges: any[] = [];
+
+    // Create Nodes
+    (persons || []).forEach(p => {
+      nodes.push({
+        id: p.id,
+        type: 'person',
+        data: { ...p },
+        position: { x: 0, y: 0 } // Computed by Dagre later
+      });
+      
+      // Create Edges
+      if (p.motherId) {
+        edges.push({
+          id: `e-${p.motherId}-${p.id}`,
+          source: p.motherId,
+          target: p.id,
+          type: edgeType,
+          style: { stroke: 'rgba(255, 255, 255, 0.2)', strokeWidth: 1.5, strokeDasharray: '4 4' },
+        });
       }
-    }
-
-    // Capture disconnected graphs
-    for (const p of persons) {
-      if (!visited.has(p.id)) {
-        const node = buildNode(p);
-        if (node) forest.push(node);
+      if (p.fatherId) {
+        edges.push({
+          id: `e-${p.fatherId}-${p.id}`,
+          source: p.fatherId,
+          target: p.id,
+          type: edgeType,
+          style: { stroke: 'rgba(255, 255, 255, 0.2)', strokeWidth: 1.5, strokeDasharray: '4 4' },
+        });
       }
-    }
+    });
 
-    return forest;
-  }, [persons]);
+    return getLayoutedElements(nodes, edges);
+  }, [persons, edgeType]);
 
-  const PersonCard = ({ person }: { person: any }) => (
-    <div 
-      className="glass-panel tree-node" 
-      onClick={(e) => { e.stopPropagation(); router.push(`/person/${person.id}`); }}
-      style={{ 
-        padding: '12px 24px', 
-        cursor: 'pointer', 
-        border: '2px solid var(--accent)', 
-        borderRadius: '12px',
-        margin: '0', 
-        zIndex: 2, 
-        position: 'relative',
-        background: 'var(--glass-bg)',
-        minWidth: '160px',
-        textAlign: 'center',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-      }}
-    >
-      <strong style={{ fontSize: '1.1rem', display: 'block', marginBottom: '4px' }}>{person.firstName} {person.lastName}</strong>
-      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-        {person.birthDate ? new Date(person.birthDate).getFullYear() : '?'} - {person.deathDate ? new Date(person.deathDate).getFullYear() : ''}
-      </span>
-    </div>
-  );
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  const renderNode = (node: TreeNode) => {
-    return (
-      <div key={node.person.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 10px' }}>
-        
-        {/* Parents Row */}
-        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-          <PersonCard person={node.person} />
-          {node.partners.map((pGroup, i) => (
-             <React.Fragment key={pGroup.partner?.id || i}>
-                {pGroup.partner && (
-                   <>
-                      <div style={{ width: '40px', height: '2px', background: 'var(--accent)', position: 'relative' }}>
-                         {pGroup.children.length > 0 && (
-                            <div style={{ position: 'absolute', top: 0, left: '50%', width: '2px', height: '20px', background: 'var(--accent)', transform: 'translateX(-50%)' }}></div>
-                         )}
-                      </div>
-                      <PersonCard person={pGroup.partner} />
-                   </>
-                )}
-             </React.Fragment>
-          ))}
-        </div>
+  // Recalculate layout if data changes
+  React.useEffect(() => {
+     const layouted = getLayoutedElements(initialNodes, initialEdges);
+     setNodes([...layouted.nodes]);
+     setEdges([...layouted.edges]);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-        {/* Children Row */}
-        {node.partners.some(p => p.children.length > 0) && (
-           <div style={{ display: 'flex', gap: '20px' }}>
-              {node.partners.map((pGroup, i) => {
-                 if (pGroup.children.length === 0) return null;
-                 
-                 return (
-                   <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      {!pGroup.partner && (
-                         <div style={{ width: '2px', height: '20px', background: 'var(--accent)' }}></div>
-                      )}
 
-                      <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
-                        {pGroup.children.map((childNode, idx) => {
-                           const isFirst = idx === 0;
-                           const isLast = idx === pGroup.children.length - 1;
-                           const isOnly = pGroup.children.length === 1;
-
-                           return (
-                             <div key={childNode.person.id} style={{ position: 'relative', padding: '20px 10px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                {!isOnly && (
-                                   <>
-                                     <div style={{ position: 'absolute', top: 0, left: isFirst ? '50%' : 0, right: '50%', height: '2px', background: 'var(--accent)' }}></div>
-                                     <div style={{ position: 'absolute', top: 0, left: '50%', right: isLast ? '50%' : 0, height: '2px', background: 'var(--accent)' }}></div>
-                                   </>
-                                )}
-                                <div style={{ position: 'absolute', top: 0, left: '50%', width: '2px', height: '20px', background: 'var(--accent)', transform: 'translateX(-50%)' }}></div>
-                                {renderNode(childNode)}
-                             </div>
-                           );
-                        })}
-                      </div>
-                   </div>
-                 );
-              })}
-           </div>
-        )}
-      </div>
-    );
-  };
+  if (persons.length === 0) {
+    return <div className="flex flex-col items-center justify-center" style={{ flex: 1, minHeight: '400px', color: 'var(--text-secondary)' }}>
+      Füge Personen hinzu, um den Baum zu sehen.
+    </div>;
+  }
 
   return (
-    <div style={{ overflowX: 'auto', padding: '40px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px', minHeight: '600px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
-      {treeRoots.length === 0 ? (
-        <div style={{ alignSelf: 'center', color: 'var(--text-secondary)' }}>Füge Personen hinzu, um den Baum zu sehen.</div>
-      ) : (
-        treeRoots.map(root => renderNode(root))
-      )}
+    <div style={{ width: '100%', height: '70vh', background: 'transparent', borderRadius: '16px', overflow: 'hidden', position: 'relative' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        fitView
+        selectNodesOnDrag={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background gap={40} color="rgba(255,255,255,0.02)" />
+        <Panel position="top-right" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>Liniendesign</span>
+          <select 
+            value={edgeType} 
+            onChange={(e) => setEdgeType(e.target.value)}
+            style={{ 
+              background: 'rgba(255,255,255,0.1)', 
+              color: 'white', 
+              border: 'none', 
+              padding: '6px 12px', 
+              borderRadius: '6px',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="default" style={{ color: 'black' }}>Geschwungen (Bezier)</option>
+            <option value="smoothstep" style={{ color: 'black' }}>Abgerundet (Smoothstep)</option>
+            <option value="straight" style={{ color: 'black' }}>Gerade (Straight)</option>
+          </select>
+        </Panel>
+      </ReactFlow>
+      <style>{`
+        .tree-node:hover {
+          transform: translateY(-4px) scale(1.02);
+          background: rgba(255, 255, 255, 0.08) !important;
+          border-color: rgba(255, 255, 255, 0.3) !important;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
+        }
+        .react-flow__edge-path {
+          transition: stroke 0.3s ease, d 0.5s ease;
+        }
+        .react-flow__edge:hover .react-flow__edge-path {
+          stroke: rgba(255, 255, 255, 0.5) !important;
+          stroke-width: 2px !important;
+        }
+      `}</style>
     </div>
   );
 }

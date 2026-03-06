@@ -13,9 +13,15 @@ export default function PersonAkte({ params }: { params: { id: string } }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchPerson();
-    fetchAllPersons();
-  }, [params.id]);
+    fetch('/api/config').then(r => r.json()).then(data => {
+      if (!data.path) {
+        router.push('/setup');
+      } else {
+        fetchPerson();
+        fetchAllPersons();
+      }
+    });
+  }, [params.id, router]);
 
   const fetchPerson = async () => {
     try {

@@ -13,8 +13,14 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchPersons();
-  }, []);
+    fetch('/api/config').then(r => r.json()).then(data => {
+      if (!data.path) {
+        router.push('/setup');
+      } else {
+        fetchPersons();
+      }
+    });
+  }, [router]);
 
   const fetchPersons = async () => {
     try {

@@ -3,8 +3,12 @@ import { prisma } from '@/lib/prisma';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { getDataPath } from '@/lib/config';
 
 export async function POST(request: Request) {
+  const dataPath = getDataPath();
+  if (!dataPath) return NextResponse.json({ error: 'Data path not configured' }, { status: 503 });
+  const UPLOAD_DIR = join(dataPath, 'uploads');
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -15,19 +19,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing file or personId' }, { status: 400 });
     }
 
+    // Fetch person to get the name for the folder
+    const person = await prisma.person.findUnique({ where: { id: personId } });
+    if (!person) {
+      return NextResponse.json({ error: 'Person not found' }, { status: 404 });
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Create a clean folder name from the person's name
+    const folderName = `${person.firstName}_${person.lastName}`.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const personUploadDir = join(UPLOAD_DIR, folderName);
+
     // Make sure upload dir exists
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
-    if (!existsSync(uploadDir)) {
-      mkdirSync(uploadDir, { recursive: true });
+    if (!existsSync(personUploadDir)) {
+      mkdirSync(personUploadDir, { recursive: true });
     }
 
     // Save file
     const uniqueName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-    const filePath = `/uploads/${uniqueName}`;
-    const absolutePath = join(uploadDir, uniqueName);
+    const filePath = `/api/file/${folderName}/${uniqueName}`;
+    const absolutePath = join(personUploadDir, uniqueName);
 
     await writeFile(absolutePath, buffer);
 
