@@ -1,5 +1,23 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+A modern, web-based tool to manage family lineages and personal archives. This project combines genealogical mapping with a "digital briefcase" system for every family member.
+
+---
+
+### ✨ The Concept
+What started as a spontaneous idea evolved into a functional management tool. It doesn't just show names; it creates a structured database where you can store memories and documents for every individual in your tree.
+
+### 🚀 Key Features
+- **Visual Family Tree:** Dynamic graphical representation of family relationships and inheritance.
+- **Digital Briefcase:** Integrated file upload system for each person (keep track of birth certificates, photos, and records).
+- **Automated Database:** Self-structuring data management for family entities.
+- **Next.js Power:** Fast, responsive, and optimized using the latest App Router and Geist font.
+
+### 🛠 Tech Stack
+- **Framework:** [Next.js 15](https://nextjs.org/) (App Router)
+- **Styling:** Tailwind CSS (optional, falls genutzt)
+- **Database:** [z.B. Prisma / Supabase / SQLite]
+- **File Storage:** [z.B. Uploadthing / AWS S3 / Local]
 ## Getting Started
 
 First, run the development server:
